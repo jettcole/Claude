@@ -28,6 +28,11 @@ the whole app on first load.
 > Open it once while you still have signal so the cache fills, then it is yours
 > offline for good.
 
+**Add it to the home screen before you start recording sales.** iOS gives a
+home-screen web app its own storage, separate from Safari's, so anything entered in
+the Safari tab beforehand will not be there once it is installed. Install first,
+then enter your items.
+
 ## Using it
 
 **Items** — Everything you sell lives here. An item can have one price, or as many
@@ -115,6 +120,23 @@ numbers with no currency symbol, so spreadsheets add them up without complaint.
 **Settings → Export backup** writes a single file holding your items, discounts,
 settings and every sale. **Restore from backup** reads it back — that is how you
 move to a new phone.
+
+## Is it really offline?
+
+Yes, after one online load. On that first visit a service worker caches the app —
+markup, styles, logic, icons and the web fonts — into the browser's cache storage.
+After that it never needs the network:
+
+- The app opens and runs cold with the phone in airplane mode.
+- Sales, change calculations, item photos and CSV exports all happen on the device.
+- Nothing is sent anywhere. There is no server, no account and no analytics; while
+  you are using it the app makes no network requests at all.
+
+The one thing that needs signal is the very first load, which is why it is worth
+opening it at home before a market rather than at the stall.
+
+If the web fonts fail to load — a locked-down network, a first load that half
+finished — the app falls back to the system typefaces and works exactly the same.
 
 ## Where your data lives
 

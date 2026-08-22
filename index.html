@@ -2114,7 +2114,9 @@ $("#drawerBtn").addEventListener("click", openCart);
 load();
 go("sell");
 
-if ("serviceWorker" in navigator && location.protocol === "https:") {
+/* isSecureContext, not a protocol check — it is also true on localhost, which is
+   how offline behaviour gets tested before deploying. */
+if ("serviceWorker" in navigator && window.isSecureContext) {
   window.addEventListener("load", function () {
     navigator.serviceWorker.register("sw.js").catch(function () { /* offline caching is a bonus, not a requirement */ });
   });
