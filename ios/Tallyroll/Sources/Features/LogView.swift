@@ -191,79 +191,91 @@ struct ReceiptView: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 0) {
-                if !store.settings.business.isEmpty {
-                    Text(store.settings.business)
-                        .font(.register(13.5, weight: .semibold))
-                }
-                HStack {
-                    Text(sale.date.formatted(date: .abbreviated, time: .shortened))
-                    Spacer()
-                    Text(sale.method.label)
-                }
-                .font(.register(11.5))
-                .foregroundStyle(Palette.ink3)
-
-                if sale.voided {
-                    Text("Voided — not counted")
-                        .font(.register(11.5, weight: .semibold))
-                        .tracking(1)
-                        .textCase(.uppercase)
-                        .foregroundStyle(Palette.oxblood)
-                        .padding(.top, 4)
-                }
-
-                Divider().overlay(Palette.rule).padding(.vertical, 8)
-
-                ForEach(sale.lines) { line in
-                    ReceiptRow(name: line.size.isEmpty ? line.name : "\(line.name) · \(line.size)",
-                               amount: line.lineTotal.formatted(store.symbol),
-                               style: .quiet)
-                    Text("\(line.qty) × \(line.unitPrice.formatted(store.symbol))")
-                        .font(.register(11.5))
-                        .foregroundStyle(Palette.ink3)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-
-                Divider().overlay(Palette.rule).padding(.vertical, 8)
-                ReceiptRow(name: "Subtotal", amount: sale.subtotal.formatted(store.symbol), style: .quiet)
-
-                ForEach(sale.discounts) { applied in
-                    ReceiptRow(name: applied.label,
-                               amount: "-" + applied.amount.formatted(store.symbol),
-                               style: .discount)
-                    Text(applied.reason(store.symbol))
-                        .font(.register(11.5))
-                        .foregroundStyle(Palette.brass.opacity(0.85))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-
-                if sale.taxRate > 0 {
-                    ReceiptRow(name: "Tax " + BasisPoints.describe(sale.taxRate),
-                               amount: sale.tax.formatted(store.symbol), style: .quiet)
-                }
-
-                Divider().overlay(Palette.rule).padding(.vertical, 8)
-                ReceiptRow(name: "Total", amount: sale.total.formatted(store.symbol), style: .total)
-
-                if sale.tendered > .zero {
-                    ReceiptRow(name: "Cash received",
-                               amount: sale.tendered.formatted(store.symbol), style: .quiet)
-                    ReceiptRow(name: "Change given",
-                               amount: sale.change.formatted(store.symbol), style: .quiet)
-                }
-
-                if !sale.note.isEmpty {
-                    Text(sale.note)
-                        .font(.register(11.5))
-                        .foregroundStyle(Palette.ink3)
-                        .padding(.top, 6)
-                }
+                header
+                lines
+                totals
             }
             .padding(14)
             .background(Palette.surfaceHigh)
             .clipShape(RoundedRectangle(cornerRadius: 12))
 
             TornEdge()
+        }
+    }
+
+    @ViewBuilder private var header: some View {
+        if !store.settings.business.isEmpty {
+            Text(store.settings.business)
+                .font(.register(13.5, weight: .semibold))
+        }
+        HStack {
+            Text(sale.date.formatted(date: .abbreviated, time: .shortened))
+            Spacer()
+            Text(sale.method.label)
+        }
+        .font(.register(11.5))
+        .foregroundStyle(Palette.ink3)
+
+        if sale.voided {
+            Text("Voided — not counted")
+                .font(.register(11.5, weight: .semibold))
+                .tracking(1)
+                .textCase(.uppercase)
+                .foregroundStyle(Palette.oxblood)
+                .padding(.top, 4)
+        }
+    }
+
+    @ViewBuilder private var lines: some View {
+        Divider().overlay(Palette.rule).padding(.vertical, 8)
+        ForEach(sale.lines) { line in
+            ReceiptRow(name: line.size.isEmpty ? line.name : "\(line.name) · \(line.size)",
+                       amount: line.lineTotal.formatted(store.symbol),
+                       style: .quiet)
+            Text("\(line.qty) × \(line.unitPrice.formatted(store.symbol))")
+                .font(.register(11.5))
+                .foregroundStyle(Palette.ink3)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    @ViewBuilder private var totals: some View {
+        Divider().overlay(Palette.rule).padding(.vertical, 8)
+        ReceiptRow(name: "Subtotal", amount: sale.subtotal.formatted(store.symbol), style: .quiet)
+
+        ForEach(sale.discounts) { applied in
+            ReceiptRow(name: applied.label,
+                       amount: "-" + applied.amount.formatted(store.symbol),
+                       style: .discount)
+            Text(applied.reason(store.symbol))
+                .font(.register(11.5))
+                .foregroundStyle(Palette.brass.opacity(0.85))
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+
+        if sale.taxRate > 0 {
+            ReceiptRow(name: "Tax " + BasisPoints.describe(sale.taxRate),
+                       amount: sale.tax.formatted(store.symbol), style: .quiet)
+        }
+
+        Divider().overlay(Palette.rule).padding(.vertical, 8)
+        ReceiptRow(name: "Total", amount: sale.total.formatted(store.symbol), style: .total)
+
+        cashExchange
+    }
+
+    @ViewBuilder private var cashExchange: some View {
+        if sale.tendered > .zero {
+            ReceiptRow(name: "Cash received",
+                       amount: sale.tendered.formatted(store.symbol), style: .quiet)
+            ReceiptRow(name: "Change given",
+                       amount: sale.change.formatted(store.symbol), style: .quiet)
+        }
+        if !sale.note.isEmpty {
+            Text(sale.note)
+                .font(.register(11.5))
+                .foregroundStyle(Palette.ink3)
+                .padding(.top, 6)
         }
     }
 }

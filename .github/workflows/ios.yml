@@ -1,9 +1,11 @@
 name: iOS
 
+# No pull_request trigger: with a PR open on the working branch it fires a
+# second macOS run for every push, and macOS minutes on a private repository
+# bill at ten times the standard rate.
 on:
   push:
     branches: [main, "claude/**"]
-  pull_request:
   workflow_dispatch:
 
 concurrency:
