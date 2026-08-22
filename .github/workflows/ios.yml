@@ -1,0 +1,28 @@
+name: iOS
+
+on:
+  push:
+    branches: [main, "claude/**"]
+  workflow_dispatch:
+
+jobs:
+  toolchain:
+    name: Probe macOS toolchain
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Xcode and SDKs
+        run: |
+          sw_vers
+          xcodebuild -version
+          xcodebuild -showsdks | sed -n '1,40p'
+
+      - name: Available iOS simulators
+        run: xcrun simctl list devices available | sed -n '1,40p'
+
+      - name: XcodeGen
+        run: |
+          brew install xcodegen
+          xcodegen --version
