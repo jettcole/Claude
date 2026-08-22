@@ -635,7 +635,7 @@ var state = {
   items: [],
   discounts: [],
   sales: [],
-  settings: { currency: "$", business: "", taxEnabled: false, taxRate: 0 },
+  settings: { currency: "$", business: "", till: "", taxEnabled: false, taxRate: 0 },
   cart: { lines: [], discountIds: [], method: "cash", note: "", tendered: 0 },
   screen: "sell"
 };
@@ -1244,6 +1244,7 @@ function completeSale() {
     tax: t.tax,
     total: t.total,
     method: c.method,
+    till: state.settings.till || "",
     tendered: tendered,
     change: change,
     note: c.note,
@@ -1410,7 +1411,7 @@ function csvCell(v) {
 }
 
 function salesCSV() {
-  var head = ["sale_id", "date", "time", "item", "size", "qty", "unit_price", "line_total",
+  var head = ["till", "sale_id", "date", "time", "item", "size", "qty", "unit_price", "line_total",
               "sale_subtotal", "sale_discount", "sale_tax", "sale_total", "payment_method",
               "cash_received", "change_given", "discounts_applied", "voided", "note"];
   var rows = [head.join(",")];
@@ -1428,7 +1429,7 @@ function salesCSV() {
     for (var j = 0; j < s.lines.length; j++) {
       var l = s.lines[j];
       rows.push([
-        s.id, stamp[0], stamp[1], l.name, l.size, l.qty,
+        s.till || "", s.id, stamp[0], stamp[1], l.name, l.size, l.qty,
         plain(l.unitPrice), plain(l.unitPrice * l.qty),
         plain(s.subtotal), plain(discountTotal), plain(s.tax), plain(s.total),
         methodLabel(s.method), s.tendered ? plain(s.tendered) : "", s.tendered ? plain(s.change || 0) : "",
@@ -1799,7 +1800,10 @@ function renderSettings() {
         '" placeholder="Shown on receipts" autocapitalize="words"></label>' +
       '<label class="field"><span>Currency symbol</span><input type="text" data-set="currency" value="' + attr(s.currency) +
         '" maxlength="3" placeholder="$"></label>' +
-    "</div>";
+      '<label class="field"><span>Till name</span><input type="text" data-set="till" value="' + attr(s.till || "") +
+        '" placeholder="Cart 1, Front counter, Sam\'s phone"></label>' +
+    "</div>" +
+    '<p class="note">Running more than one phone? Give each a different till name. It is stamped on every sale, so the exports still make sense once you put them together.</p>';
 
   html += '<div class="section-head"><span class="eyebrow">Tax</span></div>';
   html += '<div class="card">' +
@@ -2065,6 +2069,8 @@ document.addEventListener("input", function (ev) {
   if (k === "taxRate") {
     var n = parseFloat(el.value.replace(/[^0-9.]/g, ""));
     state.settings.taxRate = isFinite(n) ? Math.max(0, Math.round(n * 100)) : 0;
+  } else if (k === "till") {
+    state.settings.till = el.value;
   } else if (k === "currency") {
     state.settings.currency = el.value.trim() || "$";
     $("#topSub").textContent = state.settings.business || "Tallyroll";

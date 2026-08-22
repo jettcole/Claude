@@ -20,6 +20,7 @@ final class CSVExportTests: XCTestCase {
              tax: .zero,
              total: Money(cents: 1037),
              method: .cash,
+             till: "Cart 2",
              tendered: Money(cents: 2000),
              change: Money(cents: 963),
              note: note,
@@ -30,6 +31,13 @@ final class CSVExportTests: XCTestCase {
         csv.replacingOccurrences(of: "\u{FEFF}", with: "")
             .components(separatedBy: "\r\n")
             .filter { !$0.isEmpty }
+    }
+
+    func testTillLeadsEachRowSoMergedExportsStaySortable() {
+        let lines = rows(CSVExport.make(sales: [sale()], symbol: "$"))
+        XCTAssertEqual(lines[0].components(separatedBy: ",").first, "till")
+        XCTAssertTrue(lines[1].hasPrefix("Cart 2,"), lines[1])
+        XCTAssertTrue(lines[2].hasPrefix("Cart 2,"), lines[2])
     }
 
     func testHeaderNamesEveryColumn() {

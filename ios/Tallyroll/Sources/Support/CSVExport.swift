@@ -4,7 +4,7 @@ import Foundation
 /// along so a price can still be justified months later.
 enum CSVExport {
 
-    static let columns = ["sale_id", "date", "time", "item", "size", "qty",
+    static let columns = ["till", "sale_id", "date", "time", "item", "size", "qty",
                           "unit_price", "line_total", "sale_subtotal", "sale_discount",
                           "sale_tax", "sale_total", "payment_method", "cash_received",
                           "change_given", "discounts_applied", "voided", "note"]
@@ -37,6 +37,7 @@ enum CSVExport {
 
             for line in sale.lines {
                 let values = [
+                    sale.till,
                     sale.id.uuidString,
                     dayFormat.string(from: sale.date),
                     timeFormat.string(from: sale.date),

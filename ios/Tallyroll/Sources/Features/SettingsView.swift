@@ -12,7 +12,7 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Your stall") {
+                Section {
                     TextField("Business name", text: Binding(
                         get: { store.settings.business },
                         set: { store.settings.business = $0 }
@@ -29,6 +29,14 @@ struct SettingsView: View {
                         .multilineTextAlignment(.trailing)
                         .frame(width: 70)
                     }
+
+                    TextField("Till name", text: Binding(
+                        get: { store.settings.till },
+                        set: { store.settings.till = $0 }
+                    ))
+                    .textInputAutocapitalization(.words)
+                } footer: {
+                    Text("Running more than one phone? Give each a different till name. It is stamped on every sale, so the exports still make sense once you put them together.")
                 }
 
                 Section {

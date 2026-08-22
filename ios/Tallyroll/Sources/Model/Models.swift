@@ -97,6 +97,9 @@ struct Sale: Identifiable, Codable {
     var tax: Money = .zero
     var total: Money = .zero
     var method: PaymentMethod = .cash
+    /// Which phone took the sale, stamped at the time so renaming a till later
+    /// cannot rewrite history.
+    var till: String = ""
     var tendered: Money = .zero
     var change: Money = .zero
     var note: String = ""
@@ -143,6 +146,8 @@ struct Cart: Codable {
 struct AppSettings: Codable {
     var currency: String = "$"
     var business: String = ""
+    /// Distinguishes one phone from another once their exports are combined.
+    var till: String = ""
     var taxEnabled: Bool = false
     /// Basis points.
     var taxRate: Int = 0

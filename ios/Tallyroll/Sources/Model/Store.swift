@@ -170,6 +170,7 @@ final class Store: ObservableObject {
                           tax: totals.tax,
                           total: totals.total,
                           method: cart.method,
+                          till: settings.till,
                           tendered: tendered,
                           change: change,
                           note: cart.note))
