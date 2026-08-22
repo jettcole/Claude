@@ -3,26 +3,59 @@ name: iOS
 on:
   push:
     branches: [main, "claude/**"]
+  pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  toolchain:
-    name: Probe macOS toolchain
+  build:
+    name: Build and test
     runs-on: macos-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: ios/Tallyroll
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Xcode and SDKs
-        run: |
-          sw_vers
-          xcodebuild -version
-          xcodebuild -showsdks | sed -n '1,40p'
+      - name: Install XcodeGen
+        run: brew install xcodegen
 
-      - name: Available iOS simulators
-        run: xcrun simctl list devices available | sed -n '1,40p'
+      - name: Generate the Xcode project
+        run: xcodegen generate
 
-      - name: XcodeGen
+      - name: Pick a simulator
+        id: sim
         run: |
-          brew install xcodegen
-          xcodegen --version
+          # Whichever iPhone the runner image happens to ship, rather than a
+          # hard-coded model that breaks on the next image bump.
+          udid=$(xcrun simctl list devices available \
+                 | grep -E '^ +iPhone' | head -1 \
+                 | sed -E 's/.*\(([0-9A-Fa-f-]{36})\).*/\1/')
+          name=$(xcrun simctl list devices available \
+                 | grep -E '^ +iPhone' | head -1 | sed -E 's/^ +(.*) \(.*/\1/')
+          echo "Using $name ($udid)"
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+
+      - name: Test
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project Tallyroll.xcodeproj \
+            -scheme Tallyroll \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            | tee /tmp/xcodebuild.log \
+            | grep -E "error:|warning:|Test Case|Executed|BUILD|TEST|\*\*" || true
+          # grep swallows the exit status, so read it back from the pipeline.
+          if grep -q "TEST FAILED\|BUILD FAILED\|error:" /tmp/xcodebuild.log; then
+            echo "::group::Full build log"
+            tail -300 /tmp/xcodebuild.log
+            echo "::endgroup::"
+            exit 1
+          fi
