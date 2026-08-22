@@ -9,3 +9,6 @@ ios/Tallyroll/*.xcworkspace/
 xcuserdata/
 DerivedData/
 .build/
+ios/logic-check/Sources/
+ios/logic-check/Tests/
+ios/logic-check/.build/

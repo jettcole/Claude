@@ -13,6 +13,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  logic:
+    name: Money logic (Linux)
+    runs-on: ubuntu-latest
+    container: swift:5.10
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the arithmetic tests
+        run: ios/logic-check/run.sh
+
   build:
     name: Build and test
     runs-on: macos-latest
@@ -89,7 +99,7 @@ jobs:
             -destination "id=${{ steps.sim.outputs.udid }}" \
             -derivedDataPath ~/Library/Developer/Xcode/DerivedData/Tallyroll \
             2>&1 | tee /tmp/test.log | grep -E "Test Case .* (passed|failed)|Executed |error:|TEST" || true
-          if ! grep -q "TEST SUCCEEDED" /tmp/test.log; then
+          if ! grep -qE "\*\* TEST (EXECUTE )?SUCCEEDED \*\*" /tmp/test.log; then
             echo "::group::Test log (last 400 lines)"
             tail -400 /tmp/test.log
             echo "::endgroup::"

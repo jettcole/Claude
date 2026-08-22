@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import UIKit
 
 /// Everything the app knows, saved to a JSON file in the app's own Documents
 /// directory. Photos live beside it as ordinary JPEGs rather than being inlined,

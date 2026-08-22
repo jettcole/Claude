@@ -62,8 +62,10 @@ struct CheckoutView: View {
     private var receipt: some View {
         VStack(spacing: 0) {
             VStack(spacing: 0) {
-                ForEach(Array(store.cart.lines.enumerated()), id: \.element.id) { index, line in
-                    if index > 0 { Divider().overlay(Palette.rule) }
+                ForEach(store.cart.lines) { line in
+                    if line.id != store.cart.lines.first?.id {
+                        Divider().overlay(Palette.rule)
+                    }
                     CartLineRow(line: line)
                 }
 

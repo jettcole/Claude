@@ -39,6 +39,25 @@ Builds stay installable for 90 days. Re-run the workflow with a higher build
 number to replace it. Putting it on the public App Store is the same build plus
 App Review.
 
+## Two test jobs, and why
+
+Everything that decides an amount of money is deliberately Foundation-only —
+`Money`, the models, the till arithmetic in `Register`, and the CSV writer import
+nothing from SwiftUI or UIKit. That means it can be tested by a plain Swift
+compiler on Linux, in about a second, on GitHub's free standard runners:
+
+```sh
+ios/logic-check/run.sh
+```
+
+The macOS job then only has to prove that the app builds and that the parts
+which genuinely need UIKit behave. This matters because macOS minutes on a
+private repository bill at **ten times** the standard rate, and standard Linux
+minutes are free on public ones.
+
+If the arithmetic ever stops being testable on Linux, something that decides a
+price has grown a UI dependency — which is worth knowing about.
+
 ## Working on it without a Mac
 
 Push to any `claude/**` branch or to `main` and the **iOS** workflow generates

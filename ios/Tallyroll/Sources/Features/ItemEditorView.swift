@@ -120,7 +120,7 @@ struct ItemEditorView: View {
             }
             .onChange(of: libraryChoice) { _, choice in
                 guard let choice else { return }
-                Task {
+                Task { @MainActor in
                     if let data = try? await choice.loadTransferable(type: Data.self),
                        let image = UIImage(data: data) {
                         replacePhoto(with: image)

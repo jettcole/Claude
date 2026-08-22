@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 extension UIColor {
     convenience init(rgb: UInt32) {
