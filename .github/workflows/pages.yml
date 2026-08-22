@@ -1,0 +1,67 @@
+# Publishes the web version of Tallyroll to GitHub Pages.
+#
+# Deploying from a workflow rather than "from a branch" means the site is
+# assembled explicitly here — no Jekyll, no repository-settings dropdowns to get
+# wrong, and a build log to read when something is off.
+name: Pages
+
+on:
+  push:
+    branches: [main, "claude/**"]
+    paths:
+      - index.html
+      - sw.js
+      - manifest.webmanifest
+      - icons/**
+      - .nojekyll
+      - .github/workflows/pages.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build and deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assemble the site
+        run: |
+          # Only the web app ships; the Xcode project and tooling stay out of it.
+          mkdir -p _site
+          cp index.html manifest.webmanifest sw.js _site/
+          cp -r icons _site/
+          touch _site/.nojekyll
+          echo "Deploying:"
+          find _site -type f | sort
+
+      - name: Configure Pages
+        # enablement turns Pages on if it is off, so this needs no visit to the
+        # repository settings.
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Say where it landed
+        run: echo "Live at ${{ steps.deployment.outputs.page_url }}" >> "$GITHUB_STEP_SUMMARY"
