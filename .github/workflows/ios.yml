@@ -65,6 +65,7 @@ jobs:
           xcrun simctl boot "$udid" || true
 
       - name: Build
+        timeout-minutes: 15
         run: |
           set -o pipefail
           xcodebuild build-for-testing \
@@ -91,6 +92,7 @@ jobs:
           fi
 
       - name: Test
+        timeout-minutes: 12
         run: |
           set -o pipefail
           xcodebuild test-without-building \
@@ -98,6 +100,8 @@ jobs:
             -scheme Tallyroll \
             -destination "id=${{ steps.sim.outputs.udid }}" \
             -derivedDataPath ~/Library/Developer/Xcode/DerivedData/Tallyroll \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 120 \
             2>&1 | tee /tmp/test.log | grep -E "Test Case .* (passed|failed)|Executed |error:|TEST" || true
           if ! grep -qE "\*\* TEST (EXECUTE )?SUCCEEDED \*\*" /tmp/test.log; then
             echo "::group::Test log (last 400 lines)"
