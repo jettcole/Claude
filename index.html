@@ -673,6 +673,7 @@ function load() {
     if (Array.isArray(d.sales)) state.sales = d.sales;
     if (d.settings) Object.assign(state.settings, d.settings);
     if (d.cart && Array.isArray(d.cart.lines)) Object.assign(state.cart, d.cart);
+    applyRenames();
   } catch (e) { /* corrupt payload — start clean rather than crash */ }
 }
 
@@ -733,7 +734,7 @@ function catalogItems() {
     sizedItem("Logo Tee", 3717),
     sizedItem("Kelp Tee", 3717),
     sizedItem("Whale Tee", 3717),
-    sizedItem("Manatee", 3717),
+    sizedItem("Manatee Tee", 3717),
     sizedItem("Octo Hoodie", 8081),
     sizedItem("Black Crewneck", 7004),
     sizedItem("Blue Crewneck", 7004),
@@ -804,6 +805,20 @@ function hasSizes(item) {
 /* ================================================================
    Totals — subtotal, discounts in the order they were applied, tax
    ================================================================ */
+
+/* Corrections to catalogue names, applied once when a phone loads its data, so
+   a phone stocked before the fix does not have to be reloaded by hand. Safe to
+   drop once every phone has opened the app at least once. */
+var RENAMED = { "Manatee": "Manatee Tee" };
+
+function applyRenames() {
+  var changed = false;
+  for (var i = 0; i < state.items.length; i++) {
+    var corrected = RENAMED[state.items[i].name];
+    if (corrected) { state.items[i].name = corrected; changed = true; }
+  }
+  if (changed) save();
+}
 
 function itemTags(itemId) {
   var item = findItem(itemId);
