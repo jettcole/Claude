@@ -46,9 +46,44 @@ two or more and Tallyroll asks which size first.
 At checkout they become buttons you tap to apply. Several can stack, each one
 working on what is left after the one before it.
 
+**Photos instead of names** — Any item can carry a photo, taken with the phone's
+camera straight from the item editor. Where there is a photo, the Sell screen shows
+it in place of the name, which is quicker to hit accurately with a queue waiting.
+The name still rides along on receipts, in the log and in every export, so nothing
+is lost. Photos are cropped square and scaled down before they are stored, so a
+whole menu of them costs a fraction of the phone's storage.
+
 **Sell** — Tap items to build the sale. The running total sits at the bottom of the
 screen. Tap **Checkout** to change quantities, apply discounts, choose how it was
 paid (cash, card or other) and add a note. **Complete purchase** records it.
+
+**Cash and change** — With Cash selected, checkout shows a keypad field for what the
+customer handed over, alongside one-tap buttons for the exact amount and the notes
+people usually pay with. The change to give back is worked out as you type and
+repeated in the pinned footer, so it never needs a scroll:
+
+```
+Received                        20.00
+Change due                      $9.63
+```
+
+Hand over less than the total and it flips to **Still owed**, in red, with the
+shortfall. Both the cash received and the change given are recorded on the sale.
+
+**Why this price** — Checkout shows every discount that has been applied and the
+arithmetic behind it, so an unusual price can be justified on the spot:
+
+```
+Subtotal                       $13.75
+Regular                        -$1.38
+  10% of $13.75
+Staff                          -$2.00
+  flat $2.00 off
+Taken off in total             -$3.38
+Total                          $10.37
+```
+
+The same breakdown appears on the saved receipt afterwards, and lands in the CSV.
 
 **Log** — Today's takings, the count of sales, and the all-time total, then every
 sale grouped by day. Tap one to see its receipt.
@@ -66,8 +101,12 @@ an optional tax rate applied after discounts.
 
 ```
 sale_id,date,time,item,size,qty,unit_price,line_total,sale_subtotal,
-sale_discount,sale_tax,sale_total,payment_method,voided,note
+sale_discount,sale_tax,sale_total,payment_method,cash_received,
+change_given,discounts_applied,voided,note
 ```
+
+`discounts_applied` carries the same reasoning shown at checkout, e.g.
+`Regular (10% of $13.75); Staff (flat $2.00 off)`.
 
 On an iPhone this opens the normal share sheet, so you can drop the file into
 Files, mail it to yourself, or AirDrop it to a laptop. Amounts are written as plain
@@ -83,7 +122,7 @@ In this browser's local storage on this phone, and nowhere else. Nothing is
 uploaded anywhere, which is what keeps it working offline — and also means:
 
 - Deleting the app from your home screen, or clearing Safari's website data, takes
-  the sales with it.
+  the sales and item photos with it.
 - Private browsing blocks storage entirely; Tallyroll warns you in Settings if that
   happens.
 

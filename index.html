@@ -490,6 +490,72 @@ body.sheet-open .scroll { overflow: hidden; }
 .toast.bad  { background: var(--oxblood); color: #fff; }
 @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
+
+/* ---------- cash pad: what came in, what goes back ---------- */
+.cashpad { background: var(--surface); border: 1px solid var(--rule-soft); border-radius: var(--r-lg); overflow: hidden; }
+.cash-input { display: flex; align-items: baseline; gap: 12px; padding: 12px var(--pad) 10px; }
+.cash-input > span {
+  flex: none;
+  font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3);
+}
+.cash-input input {
+  flex: 1 1 auto; min-width: 0; border: 0; background: none; padding: 0;
+  font-family: var(--font-mono); font-size: 23px; font-weight: 600;
+  letter-spacing: -.02em; text-align: right; font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.cash-input input::placeholder { color: var(--ink-3); font-weight: 500; }
+.cash-quick { display: flex; flex-wrap: wrap; gap: 8px; padding: 2px var(--pad) 13px; }
+.chip.tender[aria-pressed="true"] { background: var(--register-soft); border-color: var(--register); color: var(--register); }
+.change {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  padding: 13px var(--pad) 14px;
+  background: var(--register-soft); border-top: 1px solid var(--rule-soft);
+}
+.change-k { font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-2); }
+.change-v { font-family: var(--font-mono); font-size: 27px; font-weight: 600; letter-spacing: -.03em; font-variant-numeric: tabular-nums; color: var(--register); line-height: 1.1; }
+.change.short { background: var(--oxblood-soft); }
+.change.short .change-v { color: var(--oxblood); }
+.change.idle { background: var(--surface-sunk); }
+.change.idle .change-v { color: var(--ink-3); }
+/* Repeated in the pinned footer: the change owed is the one number that must
+   never require a scroll. */
+.foot-change {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  padding: 8px 14px 9px; border-radius: var(--r-md);
+  background: var(--register-soft);
+}
+.foot-change .change-v { font-size: 20px; }
+.foot-change.short { background: var(--oxblood-soft); }
+.foot-change.short .change-v { color: var(--oxblood); }
+.foot-change.idle { background: var(--surface-sunk); }
+.foot-change.idle .change-v { color: var(--ink-3); }
+
+/* the running justification for the price */
+.r-saved { color: var(--brass); font-weight: 600; }
+.r-saved .r-amt { font-weight: 600; }
+.r-because { color: var(--brass); opacity: .82; font-size: 11.5px; padding-top: 0; }
+
+/* ---------- item photos ---------- */
+.tile.photo { padding: 0; overflow: hidden; justify-content: flex-end; }
+.tile-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.tile.photo .tile-foot {
+  position: relative; z-index: 1;
+  padding: 22px 11px 9px;
+  background: linear-gradient(to top, rgba(9,15,12,.86), rgba(9,15,12,.5) 52%, rgba(9,15,12,0));
+}
+.tile.photo .tile-price { color: #fff; font-weight: 600; }
+.tile.photo .tile-sizes { background: rgba(255,255,255,.92); color: #14201C; }
+.tile.photo { min-height: 132px; }
+
+.photo-preview { display: block; width: 100%; max-width: 190px; aspect-ratio: 1/1; object-fit: cover; border-radius: var(--r-md); margin: 12px auto 4px; }
+.photo-actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px var(--pad) 13px; justify-content: center; }
+.photo-actions .btn { flex: 1 1 auto; }
+.file-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.sheet-photo { display: block; width: 100%; max-width: 210px; aspect-ratio: 1/1; object-fit: cover; border-radius: var(--r-md); margin: 0 auto 14px; }
+.rowthumb { flex: none; width: 42px; height: 42px; border-radius: var(--r-sm); overflow: hidden; background: var(--surface-sunk); }
+.rowthumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 </style>
 </head>
 <body>
@@ -570,7 +636,7 @@ var state = {
   discounts: [],
   sales: [],
   settings: { currency: "$", business: "", taxEnabled: false, taxRate: 0 },
-  cart: { lines: [], discountIds: [], method: "cash", note: "" },
+  cart: { lines: [], discountIds: [], method: "cash", note: "", tendered: 0 },
   screen: "sell"
 };
 
@@ -599,8 +665,13 @@ function save() {
       settings: state.settings, cart: state.cart
     }));
   } catch (e) {
-    storageOK = false;
-    toast("Couldn't save — the phone is out of storage space.", "bad");
+    if (e && (e.name === "QuotaExceededError" || e.code === 22)) {
+      /* Recoverable — a smaller save may still fit, so leave storage enabled. */
+      toast("This phone is out of space. Export a backup, then clear old sales or photos.", "bad");
+    } else {
+      storageOK = false;
+      toast("Couldn't save to this phone's storage.", "bad");
+    }
   }
 }
 
@@ -669,11 +740,12 @@ function totals(lines, discountIds) {
   for (i = 0; i < discountIds.length; i++) {
     var d = findDiscount(discountIds[i]);
     if (!d) continue;
+    var base = running;
     var amt = d.type === "percent" ? Math.round(running * d.value / 10000) : d.value;
     if (amt > running) amt = running;
     if (amt < 0) amt = 0;
     running -= amt;
-    applied.push({ id: d.id, label: d.label, type: d.type, value: d.value, amount: amt });
+    applied.push({ id: d.id, label: d.label, type: d.type, value: d.value, amount: amt, base: base });
   }
 
   var rate = state.settings.taxEnabled ? (state.settings.taxRate || 0) : 0;
@@ -890,9 +962,12 @@ function renderSell() {
     var it = state.items[i];
     var n = countOf(it.id);
     html +=
-      '<button class="tile" type="button" data-act="tile" data-id="' + attr(it.id) + '">' +
+      '<button class="tile' + (it.photo ? " photo" : "") + '" type="button" data-act="tile" data-id="' + attr(it.id) + '"' +
+        (it.photo ? ' aria-label="' + attr(it.name + ", " + priceRange(it)) + '"' : "") + ">" +
         (n ? '<span class="tile-count mono">' + n + "</span>" : "") +
-        '<span class="tile-name">' + esc(it.name) + "</span>" +
+        (it.photo
+          ? '<img class="tile-img" src="' + attr(it.photo) + '" alt="">'
+          : '<span class="tile-name">' + esc(it.name) + "</span>") +
         '<span class="tile-foot">' +
           '<span class="tile-price">' + esc(priceRange(it)) + "</span>" +
           (it.variants.length > 1 ? '<span class="tile-sizes">' + it.variants.length + " sizes</span>" : "") +
@@ -911,7 +986,8 @@ function onTile(id) {
   if (!item) return;
   if (item.variants.length === 1) { addLine(item, item.variants[0]); return; }
 
-  var body = '<div class="sizes">';
+  var body = item.photo ? '<img class="sheet-photo" src="' + attr(item.photo) + '" alt="Photo of ' + attr(item.name) + '">' : "";
+  body += '<div class="sizes">';
   for (var i = 0; i < item.variants.length; i++) {
     var v = item.variants[i];
     body +=
@@ -981,8 +1057,12 @@ function cartBody() {
     for (i = 0; i < t.applied.length; i++) {
       var a = t.applied[i];
       html += '<div class="r-line r-discount"><span class="r-name">' + esc(a.label) +
-        (a.type === "percent" ? " (" + esc(pct(a.value)) + ")" : "") +
         '</span><span class="r-amt">-' + esc(money(a.amount)) + "</span></div>";
+      html += '<div class="r-line r-because"><span class="r-name">' + esc(discountWhy(a)) + "</span></div>";
+    }
+    if (t.applied.length > 1) {
+      html += '<div class="r-line r-saved"><span class="r-name">Taken off in total</span><span class="r-amt">-' +
+        esc(money(t.discountTotal)) + "</span></div>";
     }
     if (t.taxRate) {
       html += '<div class="r-line"><span class="r-name r-sub">Tax ' + esc(pct(t.taxRate)) + '</span><span class="r-amt">' + esc(money(t.tax)) + "</span></div>";
@@ -1012,6 +1092,8 @@ function cartBody() {
   }
   html += "</div>";
 
+  if (c.method === "cash" && c.lines.length) html += cashPad(t.total);
+
   html += '<div class="card" style="margin-top:14px"><label class="field"><span>Note (optional)</span>' +
     '<input type="text" id="cartNote" value="' + attr(c.note) + '" placeholder="Customer name, stall, anything"></label></div>' +
     '<div style="height:10px"></div>';
@@ -1019,10 +1101,85 @@ function cartBody() {
   return html;
 }
 
+/* Spells out how a discount reached its amount, so the price can be justified
+   to whoever is standing there. */
+function discountWhy(a) {
+  if (a.type === "percent") {
+    return pct(a.value) + " of " + money(a.base == null ? a.amount : a.base);
+  }
+  return "flat " + money(a.value) + " off";
+}
+
+/* Exact money first, then the notes someone is most likely to hand over. */
+function tenderSuggestions(total) {
+  var out = [total], steps = [100, 500, 1000, 2000, 5000], i, v;
+  for (i = 0; i < steps.length && out.length < 4; i++) {
+    v = Math.ceil(total / steps[i]) * steps[i];
+    if (v > total && out.indexOf(v) === -1) out.push(v);
+  }
+  return out;
+}
+
+function changeView(total, tendered) {
+  if (!tendered) return { cls: "idle", key: "Change due", val: "—" };
+  if (tendered < total) return { cls: "short", key: "Still owed", val: money(total - tendered) };
+  return { cls: "", key: "Change due", val: money(tendered - total) };
+}
+
+function cashPad(total) {
+  var tendered = state.cart.tendered || 0;
+  var v = changeView(total, tendered);
+  var sug = tenderSuggestions(total), i, html;
+
+  html = '<div class="section-head"><span class="eyebrow">Cash</span></div><div class="cashpad">' +
+    '<label class="cash-input"><span>Received</span>' +
+      '<input type="text" id="cashInput" inputmode="decimal" autocomplete="off" placeholder="0.00" value="' +
+      (tendered ? attr(plain(tendered)) : "") + '" aria-label="Cash received"></label>' +
+    '<div class="cash-quick">';
+  for (i = 0; i < sug.length; i++) {
+    html += '<button class="chip tender" type="button" data-act="tender" data-v="' + sug[i] +
+      '" aria-pressed="' + (tendered === sug[i]) + '">' +
+      (sug[i] === total ? "Exact" : esc(money(sug[i]))) + "</button>";
+  }
+  html += '<button class="chip tender" type="button" data-act="tender" data-v="0" aria-pressed="false">Clear</button>';
+  html += "</div>" +
+    '<div class="change ' + v.cls + '" id="changeBox" data-change="change">' +
+      '<span class="change-k">' + esc(v.key) + "</span>" +
+      '<span class="change-v" id="changeOut">' + esc(v.val) + "</span>" +
+    "</div></div>";
+  return html;
+}
+
+/* Updated in place on every keystroke — rebuilding the sheet would close the
+   keypad mid-count. */
+function updateChange() {
+  var t = totals(state.cart.lines, state.cart.discountIds);
+  var v = changeView(t.total, state.cart.tendered || 0);
+  var boxes = document.querySelectorAll("[data-change]"), i;
+  for (i = 0; i < boxes.length; i++) {
+    boxes[i].className = boxes[i].getAttribute("data-change") + (v.cls ? " " + v.cls : "");
+    boxes[i].querySelector(".change-k").textContent = v.key;
+    boxes[i].querySelector(".change-v").textContent = v.val;
+  }
+  var chips = document.querySelectorAll('.chip.tender[data-act="tender"]');
+  for (var i = 0; i < chips.length; i++) {
+    var cv = +chips[i].getAttribute("data-v");
+    chips[i].setAttribute("aria-pressed", String(cv !== 0 && cv === state.cart.tendered));
+  }
+}
+
 function cartFoot() {
   var t = totals(state.cart.lines, state.cart.discountIds);
   var empty = !state.cart.lines.length;
-  return '<button class="btn btn-block btn-primary" type="button" data-act="complete"' + (empty ? " disabled" : "") + ">" +
+  var head = "";
+  if (state.cart.method === "cash" && !empty) {
+    var v = changeView(t.total, state.cart.tendered || 0);
+    head = '<div class="foot-change ' + v.cls + '" data-change="foot-change">' +
+      '<span class="change-k">' + esc(v.key) + "</span>" +
+      '<span class="change-v">' + esc(v.val) + "</span></div>";
+  }
+  return head +
+    '<button class="btn btn-block btn-primary" type="button" data-act="complete"' + (empty ? " disabled" : "") + ">" +
       "Complete purchase · " + esc(money(t.total)) + "</button>" +
     '<button class="btn btn-block btn-ghost" type="button" data-act="clear-cart"' + (empty ? " disabled" : "") + ">Clear this sale</button>";
 }
@@ -1042,6 +1199,8 @@ function refreshCart() {
   /* The note input is about to be rebuilt — keep what has been typed. */
   var noteEl = document.getElementById("cartNote");
   if (noteEl) state.cart.note = noteEl.value;
+  var cashEl = document.getElementById("cashInput");
+  if (cashEl) state.cart.tendered = cents(cashEl.value);
   var keep = sheetBody.scrollTop;
   sheetBody.innerHTML = cartBody();
   sheetFoot.innerHTML = cartFoot();
@@ -1065,6 +1224,11 @@ function completeSale() {
   var t = totals(c.lines, c.discountIds);
   var noteEl = document.getElementById("cartNote");
   if (noteEl) c.note = noteEl.value.trim();
+  var cashEl = document.getElementById("cashInput");
+  if (cashEl) c.tendered = cents(cashEl.value);
+
+  var tendered = c.method === "cash" ? (c.tendered || 0) : 0;
+  var change = tendered > t.total ? tendered - t.total : 0;
 
   var lines = c.lines.map(function (l) {
     return { itemId: l.itemId, name: l.name, size: l.size, unitPrice: l.unitPrice, qty: l.qty };
@@ -1080,17 +1244,20 @@ function completeSale() {
     tax: t.tax,
     total: t.total,
     method: c.method,
+    tendered: tendered,
+    change: change,
     note: c.note,
     voided: false
   });
 
   var recorded = t.total;
-  state.cart = { lines: [], discountIds: [], method: c.method, note: "" };
+  state.cart = { lines: [], discountIds: [], method: c.method, note: "", tendered: 0 };
   save();
   cartSheetLive = false;
   closeSheet();
   render();
-  toast("Recorded " + money(recorded), "good");
+  toast(change ? "Recorded " + money(recorded) + " · give " + money(change) + " change"
+              : "Recorded " + money(recorded), "good");
 }
 
 /* ================================================================
@@ -1191,14 +1358,20 @@ function receiptHTML(sale) {
   for (i = 0; i < (sale.discounts || []).length; i++) {
     var d = sale.discounts[i];
     html += '<div class="r-line r-discount"><span class="r-name">' + esc(d.label) +
-      (d.type === "percent" ? " (" + esc(pct(d.value)) + ")" : "") +
       '</span><span class="r-amt">-' + esc(money(d.amount)) + "</span></div>";
+    html += '<div class="r-line r-because"><span class="r-name">' + esc(discountWhy(d)) + "</span></div>";
   }
   if (sale.taxRate) {
     html += '<div class="r-line"><span class="r-name r-sub">Tax ' + esc(pct(sale.taxRate)) + '</span><span class="r-amt">' + esc(money(sale.tax)) + "</span></div>";
   }
   html += '<hr class="r-rule">';
   html += '<div class="r-line r-total"><span class="r-name">Total</span><span class="r-amt">' + esc(money(sale.total)) + "</span></div>";
+  if (sale.tendered) {
+    html += '<div class="r-line r-sub" style="margin-top:6px"><span class="r-name">Cash received</span><span class="r-amt">' +
+      esc(money(sale.tendered)) + "</span></div>";
+    html += '<div class="r-line"><span class="r-name">Change given</span><span class="r-amt">' +
+      esc(money(sale.change || 0)) + "</span></div>";
+  }
   if (sale.note) html += '<div class="r-line r-sub" style="margin-top:6px"><span class="r-name">' + esc(sale.note) + "</span></div>";
   html += "</div><div class=\"receipt-tear\"></div>";
   return html;
@@ -1238,15 +1411,19 @@ function csvCell(v) {
 
 function salesCSV() {
   var head = ["sale_id", "date", "time", "item", "size", "qty", "unit_price", "line_total",
-              "sale_subtotal", "sale_discount", "sale_tax", "sale_total", "payment_method", "voided", "note"];
+              "sale_subtotal", "sale_discount", "sale_tax", "sale_total", "payment_method",
+              "cash_received", "change_given", "discounts_applied", "voided", "note"];
   var rows = [head.join(",")];
   var sorted = state.sales.slice().sort(function (a, b) { return a.ts - b.ts; });
 
   for (var i = 0; i < sorted.length; i++) {
     var s = sorted[i];
     var stamp = isoLocal(s.ts).split(" ");
-    var discountTotal = 0;
-    for (var d = 0; d < (s.discounts || []).length; d++) discountTotal += s.discounts[d].amount;
+    var discountTotal = 0, why = [];
+    for (var d = 0; d < (s.discounts || []).length; d++) {
+      discountTotal += s.discounts[d].amount;
+      why.push(s.discounts[d].label + " (" + discountWhy(s.discounts[d]) + ")");
+    }
 
     for (var j = 0; j < s.lines.length; j++) {
       var l = s.lines[j];
@@ -1254,7 +1431,8 @@ function salesCSV() {
         s.id, stamp[0], stamp[1], l.name, l.size, l.qty,
         plain(l.unitPrice), plain(l.unitPrice * l.qty),
         plain(s.subtotal), plain(discountTotal), plain(s.tax), plain(s.total),
-        methodLabel(s.method), s.voided ? "yes" : "no", s.note || ""
+        methodLabel(s.method), s.tendered ? plain(s.tendered) : "", s.tendered ? plain(s.change || 0) : "",
+        why.join("; "), s.voided ? "yes" : "no", s.note || ""
       ].map(csvCell).join(","));
     }
   }
@@ -1355,6 +1533,7 @@ function renderItems() {
         : money(it.variants[0].price);
       html +=
         '<button class="rowitem" type="button" data-act="item-open" data-id="' + attr(it.id) + '">' +
+          (it.photo ? '<span class="rowthumb"><img src="' + attr(it.photo) + '" alt=""></span>' : "") +
           '<span class="rowitem-main"><span class="rowitem-name">' + esc(it.name) + "</span>" +
           '<span class="rowitem-meta">' + esc(meta) + "</span></span>" +
           '<span class="chev">' + ICON.chev + "</span>" +
@@ -1406,11 +1585,73 @@ function variantRows() {
   return html;
 }
 
+/* A photo stands in for the name on the Sell screen; the name still rides along
+   on receipts, the log and every export. */
+function photoCard() {
+  return '<div class="card" id="photoCard">' +
+    (editing.photo
+      ? '<img class="photo-preview" src="' + attr(editing.photo) + '" alt="Photo of ' + attr(editing.name || "this item") + '">'
+      : "") +
+    '<div class="photo-actions">' +
+      '<label class="btn btn-sm">' + (editing.photo ? "Retake" : "Take photo") +
+        '<input class="file-input" type="file" accept="image/*" capture="environment" id="itemPhotoCam"></label>' +
+      '<label class="btn btn-sm">' + (editing.photo ? "Replace" : "Choose photo") +
+        '<input class="file-input" type="file" accept="image/*" id="itemPhotoLib"></label>' +
+      (editing.photo ? '<button class="btn btn-sm btn-danger" type="button" data-act="item-photo-clear">Remove</button>' : "") +
+    "</div></div>";
+}
+
+function redrawPhotoCard() {
+  var card = document.getElementById("photoCard");
+  if (card) card.outerHTML = photoCard();
+}
+
+/* Centre-crop to a square and scale down before storing. A raw iPhone photo
+   would swallow the whole local-storage allowance on its own. */
+function shrinkImage(file, cb) {
+  var MAX = 420, QUALITY = 0.72;
+
+  function draw(src, w, h) {
+    if (!w || !h) { cb(null); return; }
+    var side = Math.min(w, h);
+    var canvas = document.createElement("canvas");
+    canvas.width = MAX; canvas.height = MAX;
+    var g = canvas.getContext("2d");
+    g.drawImage(src, (w - side) / 2, (h - side) / 2, side, side, 0, 0, MAX, MAX);
+    try { cb(canvas.toDataURL("image/jpeg", QUALITY)); }
+    catch (e) { cb(null); }
+  }
+
+  function viaImage() {
+    var url = URL.createObjectURL(file);
+    var img = new Image();
+    img.onload = function () { draw(img, img.naturalWidth, img.naturalHeight); URL.revokeObjectURL(url); };
+    img.onerror = function () { URL.revokeObjectURL(url); cb(null); };
+    img.src = url;
+  }
+
+  /* createImageBitmap honours the EXIF rotation a phone camera writes; the
+     <img> path is the fallback for browsers without it. */
+  if (window.createImageBitmap) {
+    try {
+      createImageBitmap(file, { imageOrientation: "from-image" }).then(function (bm) {
+        draw(bm, bm.width, bm.height);
+        if (bm.close) bm.close();
+      }).catch(viaImage);
+      return;
+    } catch (e) { /* fall through */ }
+  }
+  viaImage();
+}
+
 function itemEditorBody() {
   return '<div class="card"><label class="field"><span>Item name</span>' +
       '<input type="text" id="itemName" value="' + attr(editing.name) + '" placeholder="Latte, T-shirt, Cinnamon bun" autocapitalize="words"></label></div>' +
+    '<div class="section-head"><span class="eyebrow">Photo</span></div>' +
+    photoCard() +
+    '<p class="note">Add one and the tile on the Sell screen shows the photo instead of the name — quicker to spot mid-queue. The name still appears on receipts and exports.</p>' +
     '<div class="section-head"><span class="eyebrow">Sizes &amp; prices</span></div>' +
-    '<div class="card">' + variantRows() + "</div>" +
+    '<div class="card" id="variantCard">' + variantRows() + "</div>" +
     '<button class="btn btn-block btn-sm btn-ghost" type="button" data-act="item-addsize" style="margin-top:10px">' + ICON.plus + "Add another size</button>" +
     '<p class="note">One size with a blank name means the item is added straight to the sale. Two or more, and Tallyroll asks which size first.</p>' +
     '<div style="height:10px"></div>';
@@ -1419,8 +1660,9 @@ function itemEditorBody() {
 function openItemEditor(id) {
   var src = id ? findItem(id) : null;
   editing = src
-    ? { id: src.id, name: src.name, variants: src.variants.map(function (v) { return { id: v.id, label: v.label, price: v.price }; }) }
-    : { id: null, name: "", variants: [{ id: uid("v"), label: "", price: 0 }] };
+    ? { id: src.id, name: src.name, photo: src.photo || null,
+        variants: src.variants.map(function (v) { return { id: v.id, label: v.label, price: v.price }; }) }
+    : { id: null, name: "", photo: null, variants: [{ id: uid("v"), label: "", price: 0 }] };
 
   openSheet({
     title: src ? "Edit item" : "New item",
@@ -1449,7 +1691,7 @@ function readItemEditor() {
 }
 
 function redrawItemEditor() {
-  var card = sheetBody.querySelectorAll(".card")[1];
+  var card = document.getElementById("variantCard");
   if (card) card.innerHTML = variantRows();
 }
 
@@ -1474,9 +1716,9 @@ function saveItem() {
 
   if (editing.id) {
     var it = findItem(editing.id);
-    it.name = name; it.variants = variants;
+    it.name = name; it.variants = variants; it.photo = editing.photo || null;
   } else {
-    state.items.push({ id: uid("item"), name: name, variants: variants });
+    state.items.push({ id: uid("item"), name: name, photo: editing.photo || null, variants: variants });
   }
   save(); closeSheet(); render();
   toast("Saved", "good");
@@ -1626,7 +1868,7 @@ function applyBackup(text) {
   state.discounts = Array.isArray(data.discounts) ? data.discounts : [];
   state.sales = data.sales;
   if (data.settings) Object.assign(state.settings, data.settings);
-  state.cart = { lines: [], discountIds: [], method: "cash", note: "" };
+  state.cart = { lines: [], discountIds: [], method: "cash", note: "", tendered: 0 };
   save(); closeSheet(); render();
   toast("Restored " + state.sales.length + " sales", "good");
 }
@@ -1696,11 +1938,19 @@ document.addEventListener("click", function (ev) {
       break;
     }
     case "method": state.cart.method = id; save(); refreshCart(); break;
+    case "tender": {
+      var v = +el.getAttribute("data-v");
+      state.cart.tendered = v;
+      var input = document.getElementById("cashInput");
+      if (input) input.value = v ? plain(v) : "";
+      save(); updateChange();
+      break;
+    }
     case "complete": completeSale(); break;
     case "clear-cart":
       confirmSheet("Clear this sale?", "The items in it are removed. Nothing already recorded is affected.",
         "Clear sale", function () {
-          state.cart.lines = []; state.cart.discountIds = []; state.cart.note = "";
+          state.cart.lines = []; state.cart.discountIds = []; state.cart.note = ""; state.cart.tendered = 0;
           cartSheetLive = false; save(); render(); toast("Sale cleared");
         }, true);
       break;
@@ -1752,6 +2002,11 @@ document.addEventListener("click", function (ev) {
       editing.variants.splice(+el.getAttribute("data-i"), 1);
       redrawItemEditor();
       break;
+    case "item-photo-clear":
+      readItemEditor();
+      editing.photo = null;
+      redrawPhotoCard();
+      break;
     case "item-save": saveItem(); break;
     case "item-delete": {
       var delId = editing && editing.id;
@@ -1791,7 +2046,7 @@ document.addEventListener("click", function (ev) {
       confirmSheet("Erase everything?", "Every item, discount and recorded sale is deleted from this phone. Export a backup first if you might want any of it back.",
         "Erase everything", function () {
           state.items = []; state.discounts = []; state.sales = [];
-          state.cart = { lines: [], discountIds: [], method: "cash", note: "" };
+          state.cart = { lines: [], discountIds: [], method: "cash", note: "", tendered: 0 };
           save(); render(); toast("Everything erased");
         }, true);
       break;
@@ -1799,6 +2054,11 @@ document.addEventListener("click", function (ev) {
 });
 
 document.addEventListener("input", function (ev) {
+  if (ev.target.id === "cashInput") {
+    state.cart.tendered = cents(ev.target.value);
+    save(); updateChange();
+    return;
+  }
   var el = ev.target.closest("[data-set]");
   if (!el) return;
   var k = el.getAttribute("data-set");
@@ -1816,6 +2076,20 @@ document.addEventListener("input", function (ev) {
 });
 
 document.addEventListener("change", function (ev) {
+  if (ev.target.id === "itemPhotoCam" || ev.target.id === "itemPhotoLib") {
+    var photo = ev.target.files && ev.target.files[0];
+    ev.target.value = "";           /* so retaking the same shot still fires */
+    if (!photo || !editing) return;
+    readItemEditor();
+    shrinkImage(photo, function (dataUrl) {
+      if (!editing) return;
+      if (!dataUrl) { toast("Couldn't read that photo.", "bad"); return; }
+      editing.photo = dataUrl;
+      redrawPhotoCard();
+    });
+    return;
+  }
+
   if (ev.target.id !== "importFile") return;
   var f = ev.target.files && ev.target.files[0];
   if (!f) return;
