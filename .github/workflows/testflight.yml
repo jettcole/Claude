@@ -1,0 +1,126 @@
+# Builds a signed app and uploads it to TestFlight, entirely on GitHub's macOS
+# machines. Nothing here needs a Mac of your own.
+#
+# It stays switched off until you add the four secrets below, which require an
+# Apple Developer Program membership ($99/year). Without that membership Apple
+# provides no way to install an app on a phone that has never been plugged into
+# a computer.
+#
+# Settings → Secrets and variables → Actions:
+#   APPLE_TEAM_ID                 Ten characters, shown at the top right of
+#                                 developer.apple.com/account
+#   APP_STORE_CONNECT_KEY_ID      From App Store Connect → Users and Access →
+#                                 Integrations → App Store Connect API →
+#                                 "+", role "App Manager"
+#   APP_STORE_CONNECT_ISSUER_ID   On that same page
+#   APP_STORE_CONNECT_PRIVATE_KEY The whole downloaded .p8 file, pasted in,
+#                                 BEGIN/END lines included. Apple lets you
+#                                 download it exactly once.
+#
+# Before the first run, create the app record in App Store Connect with the
+# bundle identifier set in ios/Tallyroll/project.yml.
+
+name: TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: "Build number (must be higher than the last upload)"
+        required: true
+        default: "1"
+
+jobs:
+  release:
+    name: Build and upload
+    runs-on: macos-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: ios/Tallyroll
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the secrets are present
+        env:
+          TEAM: ${{ secrets.APPLE_TEAM_ID }}
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ISSUER: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+        run: |
+          missing=""
+          [ -n "$TEAM" ]   || missing="$missing APPLE_TEAM_ID"
+          [ -n "$KEY_ID" ] || missing="$missing APP_STORE_CONNECT_KEY_ID"
+          [ -n "$ISSUER" ] || missing="$missing APP_STORE_CONNECT_ISSUER_ID"
+          [ -n "$KEY" ]    || missing="$missing APP_STORE_CONNECT_PRIVATE_KEY"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secrets:$missing"
+            echo "See the comments at the top of .github/workflows/testflight.yml."
+            exit 1
+          fi
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate the Xcode project
+        run: |
+          xcodegen generate
+          # Stamp the build number; App Store Connect rejects a repeat.
+          /usr/libexec/PlistBuddy -c "Print" /dev/null 2>/dev/null || true
+          echo "Build number: ${{ inputs.build_number }}"
+
+      - name: Write the App Store Connect API key
+        env:
+          KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+        run: |
+          mkdir -p ~/private_keys
+          printf '%s' "$KEY" > ~/private_keys/AuthKey_${KEY_ID}.p8
+          chmod 600 ~/private_keys/AuthKey_${KEY_ID}.p8
+
+      - name: Archive
+        run: |
+          set -o pipefail
+          xcodebuild archive \
+            -project Tallyroll.xcodeproj \
+            -scheme Tallyroll \
+            -destination "generic/platform=iOS" \
+            -archivePath "$RUNNER_TEMP/Tallyroll.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath ~/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_KEY_ID }}.p8 \
+            -authenticationKeyID "${{ secrets.APP_STORE_CONNECT_KEY_ID }}" \
+            -authenticationKeyIssuerID "${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}" \
+            DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}" \
+            CURRENT_PROJECT_VERSION="${{ inputs.build_number }}" \
+            | tail -60
+
+      - name: Upload to TestFlight
+        run: |
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>${{ secrets.APPLE_TEAM_ID }}</string>
+            <key>uploadSymbols</key><true/>
+          </dict>
+          </plist>
+          PLIST
+
+          set -o pipefail
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/Tallyroll.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath ~/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_KEY_ID }}.p8 \
+            -authenticationKeyID "${{ secrets.APP_STORE_CONNECT_KEY_ID }}" \
+            -authenticationKeyIssuerID "${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}" \
+            | tail -40
+
+      - name: Clean up the key
+        if: always()
+        run: rm -rf ~/private_keys

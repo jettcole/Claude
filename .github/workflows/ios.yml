@@ -14,7 +14,7 @@ jobs:
   build:
     name: Build and test
     runs-on: macos-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     defaults:
       run:
         working-directory: ios/Tallyroll
@@ -28,34 +28,78 @@ jobs:
       - name: Generate the Xcode project
         run: xcodegen generate
 
+      # A cold Swift build on a macOS runner is several minutes; reusing the
+      # build directory turns later pushes into a rebuild of what changed.
+      - name: Restore the build directory
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Developer/Xcode/DerivedData/Tallyroll
+          key: derived-${{ runner.os }}-${{ hashFiles('ios/Tallyroll/project.yml') }}-${{ github.sha }}
+          restore-keys: |
+            derived-${{ runner.os }}-${{ hashFiles('ios/Tallyroll/project.yml') }}-
+            derived-${{ runner.os }}-
+
       - name: Pick a simulator
         id: sim
         run: |
           # Whichever iPhone the runner image happens to ship, rather than a
           # hard-coded model that breaks on the next image bump.
-          udid=$(xcrun simctl list devices available \
-                 | grep -E '^ +iPhone' | head -1 \
-                 | sed -E 's/.*\(([0-9A-Fa-f-]{36})\).*/\1/')
-          name=$(xcrun simctl list devices available \
-                 | grep -E '^ +iPhone' | head -1 | sed -E 's/^ +(.*) \(.*/\1/')
-          echo "Using $name ($udid)"
+          line=$(xcrun simctl list devices available | grep -E '^ +iPhone' | head -1)
+          udid=$(echo "$line" | sed -E 's/.*\(([0-9A-Fa-f-]{36})\).*/\1/')
+          echo "Using ${line}"
           echo "udid=$udid" >> "$GITHUB_OUTPUT"
+          # Boot it now so the delay is visible as its own step rather than
+          # hiding inside the build.
+          xcrun simctl boot "$udid" || true
+
+      - name: Build
+        run: |
+          set -o pipefail
+          xcodebuild build-for-testing \
+            -project Tallyroll.xcodeproj \
+            -scheme Tallyroll \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -derivedDataPath ~/Library/Developer/Xcode/DerivedData/Tallyroll \
+            -showBuildTimingSummary \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            OTHER_SWIFT_FLAGS='$(inherited) -Xfrontend -warn-long-function-bodies=400 -Xfrontend -warn-long-expression-type-checking=400' \
+            2>&1 | tee /tmp/build.log | grep -E "error:|warning:|Compiling|Linking|BUILD|\*\*" || true
+          echo "::group::Slowest expressions to type-check"
+          grep -E "took [0-9]+ms to type-check" /tmp/build.log | sort -t' ' -k2 -rn | head -20 || true
+          echo "::endgroup::"
+          echo "::group::Build timing summary"
+          sed -n '/Build Timing Summary/,$p' /tmp/build.log | head -40 || true
+          echo "::endgroup::"
+          if ! grep -q "BUILD SUCCEEDED" /tmp/build.log; then
+            echo "::group::Build log (last 400 lines)"
+            tail -400 /tmp/build.log
+            echo "::endgroup::"
+            exit 1
+          fi
 
       - name: Test
         run: |
           set -o pipefail
-          xcodebuild test \
+          xcodebuild test-without-building \
             -project Tallyroll.xcodeproj \
             -scheme Tallyroll \
             -destination "id=${{ steps.sim.outputs.udid }}" \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            | tee /tmp/xcodebuild.log \
-            | grep -E "error:|warning:|Test Case|Executed|BUILD|TEST|\*\*" || true
-          # grep swallows the exit status, so read it back from the pipeline.
-          if grep -q "TEST FAILED\|BUILD FAILED\|error:" /tmp/xcodebuild.log; then
-            echo "::group::Full build log"
-            tail -300 /tmp/xcodebuild.log
+            -derivedDataPath ~/Library/Developer/Xcode/DerivedData/Tallyroll \
+            2>&1 | tee /tmp/test.log | grep -E "Test Case .* (passed|failed)|Executed |error:|TEST" || true
+          if ! grep -q "TEST SUCCEEDED" /tmp/test.log; then
+            echo "::group::Test log (last 400 lines)"
+            tail -400 /tmp/test.log
             echo "::endgroup::"
             exit 1
           fi
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Tallyroll iOS"
+            echo
+            grep -E "^Test Suite '.*' (passed|failed)" /tmp/test.log | tail -5 || true
+            grep -E "^ *Executed [0-9]+ tests?" /tmp/test.log | tail -1 || true
+          } >> "$GITHUB_STEP_SUMMARY"
